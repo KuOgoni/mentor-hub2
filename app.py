@@ -11,22 +11,17 @@ app = Flask(__name__)
 # ================= CONFIG =================
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "mentorhub-secret-key")
 
+# PostgreSQL для Render или SQLite локально
 database_url = os.environ.get("DATABASE_URL")
-
 if not database_url:
     database_url = "sqlite:///mentorhub.db"
 
-# fix for Render postgres:// → postgresql://
+# фикс Render postgres://
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "pool_pre_ping": True,
-    "pool_recycle": 300,
-}
 
 app.config["UPLOAD_FOLDER"] = os.path.join("static", "uploads")
 
@@ -105,12 +100,20 @@ def save_file(file):
     timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     filename = f"{timestamp}_{filename}"
 
+    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
     file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
+
     return filename
 
 
 def save_multiple_files(files):
-    return [save_file(f) for f in files if f and f.filename]
+    saved_files = []
+    for file in files:
+        if file and file.filename:
+            filename = save_file(file)
+            if filename:
+                saved_files.append(filename)
+    return saved_files
 
 
 def current_user():
@@ -128,7 +131,7 @@ def index():
     mentors = (
         User.query
         .filter_by(is_mentor=True)
-        .order_by(User.rating.desc())
+        .order_by(User.rating.desc(), User.created_at.asc())
         .limit(4)
         .all()
     )
@@ -141,21 +144,30 @@ def register():
         return redirect(url_for("profile", user_id=current_user().id))
 
     if request.method == "POST":
-        email = request.form.get("email").lower().strip()
-        password = request.form.get("password").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "").strip()
 
         if User.query.filter_by(email=email).first():
-            return render_template("register.html", error="Email already exists")
+            return render_template("register.html", error="Этот email уже зарегистрирован.")
+
+        selected_subjects = request.form.getlist("subjects")
+        grades_list = []
+
+        for subject in selected_subjects:
+            grade = request.form.get(f"grade_{subject}", "").strip()
+            if grade:
+                grades_list.append(f"{subject}: {grade}")
 
         user = User(
-            first_name=request.form.get("first_name"),
-            last_name=request.form.get("last_name"),
-            class_name=request.form.get("class_name"),
+            first_name=request.form.get("first_name", "").strip(),
+            last_name=request.form.get("last_name", "").strip(),
+            class_name=request.form.get("class_name", "").strip(),
             email=email,
             password_hash=generate_password_hash(password),
             photo=save_file(request.files.get("photo")),
-            subjects=", ".join(request.form.getlist("subjects")),
-            about=request.form.get("about", "")
+            subjects=", ".join(selected_subjects),
+            grades=", ".join(grades_list),
+            about=request.form.get("about", "").strip()
         )
 
         db.session.add(user)
@@ -169,11 +181,17 @@ def register():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    if request.method == "POST":
-        user = User.query.filter_by(email=request.form.get("email")).first()
+    if current_user():
+        return redirect(url_for("profile", user_id=current_user().id))
 
-        if not user or not check_password_hash(user.password_hash, request.form.get("password")):
-            return render_template("login.html", error="Wrong credentials")
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "").strip()
+
+        user = User.query.filter_by(email=email).first()
+
+        if not user or not check_password_hash(user.password_hash, password):
+            return render_template("login.html", error="Неверный email или пароль.")
 
         session["user_id"] = user.id
         return redirect(url_for("profile", user_id=user.id))
@@ -193,6 +211,5 @@ def logout():
     session.clear()
     return redirect(url_for("index"))
 
-# ================= IMPORTANT =================
-# NO app.run() HERE — gunicorn handles it!
+# ❗ ВАЖНО: НЕТ app.run() — Render сам запускает через gunicorn
 
