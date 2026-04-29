@@ -17,6 +17,13 @@ if database_url and database_url.startswith("postgres://"):
 
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# НАСТРОЙКИ ДЛЯ БАЗЫ ДАННЫХ (ИСПРАВЛЯЮТ ОШИБКУ)
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_pre_ping": True,
+    "pool_recycle": 300,
+}
+
 app.config["UPLOAD_FOLDER"] = os.path.join("static", "uploads")
 
 db = SQLAlchemy(app)
