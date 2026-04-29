@@ -1,4 +1,3 @@
-
 from flask import Flask, render_template, request, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.utils import secure_filename
@@ -9,27 +8,23 @@ import os
 app = Flask(__name__)
 
 # ================= CONFIG =================
-app.config["SECRET_KEY"] = "mentorhub-secret-key"
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
 
-# PostgreSQL (Render) + fallback SQLite
-database_url = os.environ.get("DATABASE_URL")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-if database_url:
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
-else:
-    database_url = "sqlite:///mentorhub.db"
+# Render fix (postgres:// -> postgresql://)
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+# fallback local
+if not DATABASE_URL:
+    DATABASE_URL = "sqlite:///mentorhub.db"
+
+app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["UPLOAD_FOLDER"] = os.path.join("static", "uploads")
 
 db = SQLAlchemy(app)
-
-# ================= INIT =================
-with app.app_context():
-    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
-    db.create_all()
 
 # ================= SUBJECTS =================
 SUBJECTS = [
@@ -43,7 +38,6 @@ SUBJECTS = [
 # ================= MODELS =================
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-
     first_name = db.Column(db.String(100), nullable=False)
     last_name = db.Column(db.String(100), nullable=False)
     class_name = db.Column(db.String(50), nullable=False)
@@ -52,7 +46,6 @@ class User(db.Model):
     password_hash = db.Column(db.String(300), nullable=False)
 
     photo = db.Column(db.String(250), default="")
-
     subjects = db.Column(db.Text, default="")
     grades = db.Column(db.Text, default="")
     about = db.Column(db.Text, default="")
@@ -69,44 +62,49 @@ class User(db.Model):
 
 class Review(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    mentor_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    reviewer_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    rating = db.Column(db.Integer, nullable=False)
+    mentor_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    reviewer_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    rating = db.Column(db.Integer)
     text = db.Column(db.Text, default="")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class ProofDocument(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    filename = db.Column(db.String(250), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    filename = db.Column(db.String(250))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+# ================= INIT DB (SAFE FOR RENDER) =================
+def init_db():
+    with app.app_context():
+        db.create_all()
+        os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+
+init_db()
 
 # ================= HELPERS =================
 def save_file(file):
     if not file or file.filename == "":
         return ""
+
     filename = secure_filename(file.filename)
-    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    filename = f"{timestamp}_{filename}"
-    file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
+    filename = f"{datetime.utcnow().timestamp()}_{filename}"
+
+    path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    file.save(path)
+
     return filename
 
 
-def save_multiple_files(files):
-    return [save_file(f) for f in files if f and f.filename]
-
-
 def current_user():
-    user_id = session.get("user_id")
-    return User.query.get(user_id) if user_id else None
+    uid = session.get("user_id")
+    return User.query.get(uid) if uid else None
 
 
 @app.context_processor
-def inject_user():
+def inject_globals():
     return dict(current_user=current_user(), subjects_list=SUBJECTS)
-
 
 # ================= ROUTES =================
 @app.route("/")
@@ -118,20 +116,18 @@ def index():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        email = request.form.get("email").lower().strip()
+        email = request.form["email"].lower()
 
         if User.query.filter_by(email=email).first():
-            return render_template("register.html", error="Email already exists")
+            return "User already exists"
 
         user = User(
-            first_name=request.form.get("first_name"),
-            last_name=request.form.get("last_name"),
-            class_name=request.form.get("class_name"),
+            first_name=request.form["first_name"],
+            last_name=request.form["last_name"],
+            class_name=request.form["class_name"],
             email=email,
-            password_hash=generate_password_hash(request.form.get("password")),
-            photo=save_file(request.files.get("photo")),
-            subjects=", ".join(request.form.getlist("subjects")),
-            about=request.form.get("about")
+            password_hash=generate_password_hash(request.form["password"]),
+            about=request.form.get("about", "")
         )
 
         db.session.add(user)
@@ -146,22 +142,15 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        user = User.query.filter_by(email=request.form.get("email")).first()
+        user = User.query.filter_by(email=request.form["email"]).first()
 
-        if not user or not check_password_hash(user.password_hash, request.form.get("password")):
-            return render_template("login.html", error="Wrong credentials")
+        if not user or not check_password_hash(user.password_hash, request.form["password"]):
+            return "Invalid credentials"
 
         session["user_id"] = user.id
         return redirect(url_for("profile", user_id=user.id))
 
     return render_template("login.html")
-
-
-@app.route("/profile/<int:user_id>")
-def profile(user_id):
-    user = User.query.get_or_404(user_id)
-    reviews = Review.query.filter_by(mentor_id=user.id).all()
-    return render_template("profile.html", user=user, reviews=reviews)
 
 
 @app.route("/logout")
@@ -170,7 +159,11 @@ def logout():
     return redirect(url_for("index"))
 
 
-# ================= RUN (ONLY LOCAL) =================
-if __name__ == "__main__":
-    app.run(debug=True)
+@app.route("/profile/<int:user_id>")
+def profile(user_id):
+    user = User.query.get_or_404(user_id)
+    reviews = Review.query.filter_by(mentor_id=user.id).all()
+    return render_template("profile.html", user=user, reviews=reviews)
 
+# ================= REQUIRED FOR RENDER =================
+# NO app.run()
