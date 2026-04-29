@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>MentorHub</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+
+    <div class="logo">★ MentorHub</div>
+
+    <nav>
+        <a href="/">Главная</a>
+        <a href="/mentors">Менторы</a>
+    </nav>
+
+    <div class="auth">
+
+        {% if current_user %}
+            <a href="/profile/{{ current_user.id }}" class="profile-dot">
+                {% if current_user.photo %}
+                    <img src="{{ url_for('static', filename='uploads/' + current_user.photo) }}">
+                {% else %}
+                    {{ current_user.first_name[0] }}
+                {% endif %}
+            </a>
+        {% else %}
+            <a href="/login" class="btn small">Войти</a>
+            <a href="/register" class="btn small outline">Регистрация</a>
+        {% endif %}
+
+    </div>
+
+</header>
+
+<main>
+    {% block content %}{% endblock %}
+</main>
+
+</body>
+</html>

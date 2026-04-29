@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<section class="hero">
+
+    <!-- ЛЕВАЯ ЧАСТЬ -->
+    <div class="hero-text">
+
+        <h1>
+            Найди своего <span>ментора</span>
+        </h1>
+
+        <p>
+            Реальные ученики. Реальные результаты.  
+            Выбирай наставника и прокачивай свои знания быстрее.
+        </p>
+
+        {% if current_user %}
+            <a href="/mentors" class="hero-btn">
+                Смотреть менторов
+            </a>
+        {% else %}
+            <a href="/register" class="hero-btn">
+                Войти / Зарегистрироваться
+            </a>
+        {% endif %}
+
+    </div>
+
+    <!-- ПРАВАЯ ЧАСТЬ (КАРТИНКА) -->
+    <div class="hero-image">
+        <img src="{{ url_for('static', filename='hero.png') }}" alt="MentorHub">
+    </div>
+
+</section>
+
+
+<h2 class="title">Рекомендуемые менторы</h2>
+
+
+<div class="cards">
+
+{% for mentor in mentors %}
+
+    <div class="card">
+
+        <div class="avatar">
+            {% if mentor.photo %}
+                <img src="{{ url_for('static', filename='uploads/' + mentor.photo) }}">
+            {% else %}
+                {{ mentor.first_name[0] }}
+            {% endif %}
+        </div>
+
+        <h3>{{ mentor.first_name }} {{ mentor.last_name }}</h3>
+
+        <p class="subjects">{{ mentor.subjects }}</p>
+
+        <p class="rating">⭐ {{ mentor.rating }}</p>
+
+        <a href="/profile/{{ mentor.id }}" class="card-btn">
+            Открыть
+        </a>
+
+    </div>
+
+{% else %}
+
+    <p class="empty">Пока нет пользователей</p>
+
+{% endfor %}
+
+</div>
+
+{% endblock %}

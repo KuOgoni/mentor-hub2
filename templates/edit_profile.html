@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="form-card">
+
+    <h1>Редактировать профиль</h1>
+
+    <form method="POST" enctype="multipart/form-data">
+
+        <div class="form-row">
+            <input name="first_name" value="{{ user.first_name }}" placeholder="Имя" required>
+            <input name="last_name" value="{{ user.last_name }}" placeholder="Фамилия" required>
+        </div>
+
+        <input name="class_name" value="{{ user.class_name }}" placeholder="Класс" required>
+
+        <h3>Предметы и оценки</h3>
+
+        <div class="subjects-grid">
+            {% for s in subjects_list %}
+            <div class="subject-box">
+                <label>
+                    <input 
+                        type="checkbox" 
+                        name="subjects" 
+                        value="{{ s }}" 
+                        {% if s in user.subjects %}checked{% endif %}
+                    >
+                    {{ s }}
+                </label>
+
+                <input 
+                    name="grade_{{ s }}" 
+                    placeholder="Оценка"
+                >
+            </div>
+            {% endfor %}
+        </div>
+
+        <p class="muted">
+            Если оценку не менять, можно оставить поле пустым — старая оценка сохранится.
+        </p>
+
+        <textarea name="about" placeholder="О себе">{{ user.about }}</textarea>
+
+        <label>Новое фото профиля</label>
+        <input type="file" name="photo">
+
+        <label>Добавить новые документы / подтверждения</label>
+        <input type="file" name="proof_files" multiple>
+
+        <button class="btn full">Сохранить изменения</button>
+
+    </form>
+
+</div>
+
+{% endblock %}

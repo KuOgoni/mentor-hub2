@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="layout">
+
+<div class="filters">
+
+<form method="GET">
+
+    <select name="subject">
+        <option value="">Все предметы</option>
+        {% for s in subjects_list %}
+            <option value="{{ s }}">{{ s }}</option>
+        {% endfor %}
+    </select>
+
+    <select name="price_type">
+        <option value="">Любой</option>
+        <option value="free">Бесплатно</option>
+        <option value="paid">Платно</option>
+    </select>
+
+    <button class="btn">Фильтр</button>
+
+</form>
+
+</div>
+
+<div class="mentor-list">
+
+{% for mentor in mentors %}
+    <div class="mentor-row">
+
+        <div class="avatar">
+            {% if mentor.photo %}
+                <img src="{{ url_for('static', filename='uploads/' + mentor.photo) }}">
+            {% endif %}
+        </div>
+
+        <div>
+            <h3>{{ mentor.first_name }} {{ mentor.last_name }}</h3>
+            <p>{{ mentor.subjects }}</p>
+            <p>⭐ {{ mentor.rating }}</p>
+        </div>
+
+        <a href="/profile/{{ mentor.id }}" class="btn small">Открыть</a>
+
+    </div>
+{% endfor %}
+
+</div>
+</div>
+
+{% endblock %}

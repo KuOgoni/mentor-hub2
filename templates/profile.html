@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="profile-page">
+
+    <aside class="profile-sidebar">
+
+        <div class="avatar big">
+            {% if user.photo %}
+                <img src="{{ url_for('static', filename='uploads/' + user.photo) }}">
+            {% else %}
+                {{ user.first_name[0] }}
+            {% endif %}
+        </div>
+
+        <h2>{{ user.first_name }} {{ user.last_name }}</h2>
+        <p>{{ user.class_name }}</p>
+
+        {% if current_user and current_user.id == user.id %}
+            <a href="/edit-profile/{{ user.id }}" class="btn full">Редактировать профиль</a>
+            <a href="/logout" class="logout-btn">Выйти</a>
+        {% endif %}
+
+    </aside>
+
+    <section class="profile-main">
+
+        {% if current_user and current_user.id == user.id %}
+            <h1>Мой профиль</h1>
+        {% else %}
+            <h1>Профиль ментора</h1>
+        {% endif %}
+
+        <div class="profile-grid">
+
+            <div class="info-card">
+                <h3>Обо мне</h3>
+                <p>{{ user.about or "Пока нет описания." }}</p>
+            </div>
+
+            <div class="info-card">
+                <h3>Успеваемость</h3>
+                <p><b>Предметы:</b> {{ user.subjects or "Не указано" }}</p>
+                <p><b>Оценки:</b> {{ user.grades or "Не указано" }}</p>
+            </div>
+
+            <div class="info-card">
+                <h3>Подтверждение успеваемости</h3>
+
+                {% if user.proof_documents %}
+                    <div class="proof-list">
+
+                        {% for doc in user.proof_documents %}
+                            {% set file_lower = doc.filename.lower() %}
+
+                            <div class="proof-item">
+
+    {% if file_lower.endswith('.png') or file_lower.endswith('.jpg') or file_lower.endswith('.jpeg') or file_lower.endswith('.webp') %}
+        <img 
+            src="{{ url_for('static', filename='uploads/' + doc.filename) }}" 
+            class="proof-image"
+        >
+    {% else %}
+        <a 
+            href="{{ url_for('static', filename='uploads/' + doc.filename) }}" 
+            class="btn full"
+            target="_blank"
+        >
+            Открыть документ {{ loop.index }}
+        </a>
+    {% endif %}
+
+    <!-- 🔴 ВОТ ЭТА КНОПКА -->
+    {% if current_user and current_user.id == user.id %}
+    <form method="POST" action="{{ url_for('delete_document', doc_id=doc.id) }}">
+        <button class="btn danger full">Удалить</button>
+    </form>
+    {% endif %}
+
+</div>
+                        {% endfor %}
+
+                    </div>
+                {% else %}
+                    <p class="muted">Документы пока не загружены.</p>
+                {% endif %}
+            </div>
+
+            <div class="info-card">
+                <h3>Менторство</h3>
+
+                {% if user.is_mentor %}
+                    <p class="success">Ты ментор ✅</p>
+
+                    <p>
+                        <b>Формат:</b>
+                        {% if user.is_free %}
+                            Бесплатно
+                        {% else %}
+                            {{ user.price }} ₸
+                        {% endif %}
+                    </p>
+
+                    <p><b>Время:</b> {{ user.available_time }}</p>
+
+                    {% if user.whatsapp %}
+                        <a class="btn" href="https://wa.me/{{ user.whatsapp.replace('+','').replace(' ','').replace('-','') }}" target="_blank">
+                            Написать в WhatsApp
+                        </a>
+                    {% endif %}
+
+                    {% if current_user and current_user.id == user.id %}
+                        <form method="POST" action="/stop-mentor/{{ user.id }}">
+                            <button class="btn danger">Не быть ментором</button>
+                        </form>
+                    {% endif %}
+
+                {% else %}
+
+                    {% if current_user and current_user.id == user.id %}
+                        <details>
+                            <summary class="btn">Стать ментором</summary>
+
+                            <form method="POST" action="/become-mentor/{{ user.id }}">
+
+                                <select name="price_type">
+                                    <option value="free">Бесплатно</option>
+                                    <option value="paid">Платно</option>
+                                </select>
+
+                                <input name="price" placeholder="Цена">
+                                <textarea name="available_time" placeholder="Время"></textarea>
+                                <input name="whatsapp" placeholder="+77001234567">
+
+                                <button class="btn full">Сохранить</button>
+
+                            </form>
+                        </details>
+                    {% else %}
+                        <p class="muted">Пользователь пока не ментор.</p>
+                    {% endif %}
+
+                {% endif %}
+            </div>
+
+        </div>
+
+    </section>
+
+</div>
+
+{% endblock %}

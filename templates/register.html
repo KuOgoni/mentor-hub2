@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="form-card">
+
+    <h1>Регистрация</h1>
+
+    {% if error %}
+        <p class="error">{{ error }}</p>
+    {% endif %}
+
+    <form method="POST" enctype="multipart/form-data">
+
+        <div class="form-row">
+            <input name="first_name" placeholder="Имя" required>
+            <input name="last_name" placeholder="Фамилия" required>
+        </div>
+
+        <div class="form-row">
+            <input name="class_name" placeholder="Класс" required>
+            <input name="email" placeholder="Email" required>
+        </div>
+
+        <input name="password" type="password" placeholder="Пароль" required>
+
+        <h3>Выбери предметы и оценки</h3>
+
+        <div class="subjects-grid">
+            {% for s in subjects_list %}
+            <div class="subject-box">
+                <label>
+                    <input type="checkbox" name="subjects" value="{{ s }}">
+                    {{ s }}
+                </label>
+
+                <input name="grade_{{ s }}" placeholder="Оценка">
+            </div>
+            {% endfor %}
+        </div>
+
+        <textarea name="about" placeholder="О себе"></textarea>
+
+        <label>Фото профиля</label>
+        <input type="file" name="photo">
+
+        <label>Документы / подтверждение оценок</label>
+        <input type="file" name="proof_files" multiple>
+
+        <button class="btn full">Создать аккаунт</button>
+
+    </form>
+
+</div>
+
+{% endblock %}
