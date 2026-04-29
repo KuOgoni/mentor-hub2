@@ -9,20 +9,19 @@ import os
 app = Flask(__name__)
 
 # ================= CONFIG =================
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "mentorhub-secret-key")
+app.config["SECRET_KEY"] = "mentorhub-secret-key"
 
-# PostgreSQL для Render или SQLite локально
+# PostgreSQL (Render) + fallback SQLite
 database_url = os.environ.get("DATABASE_URL")
-if not database_url:
-    database_url = "sqlite:///mentorhub.db"
 
-# фикс Render postgres://
-if database_url.startswith("postgres://"):
-    database_url = database_url.replace("postgres://", "postgresql://", 1)
+if database_url:
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+else:
+    database_url = "sqlite:///mentorhub.db"
 
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
 app.config["UPLOAD_FOLDER"] = os.path.join("static", "uploads")
 
 db = SQLAlchemy(app)
@@ -32,7 +31,7 @@ with app.app_context():
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
     db.create_all()
 
-# ================= DATA =================
+# ================= SUBJECTS =================
 SUBJECTS = [
     "Математика", "Алгебра", "Геометрия",
     "Физика", "Химия", "Биология",
@@ -70,10 +69,8 @@ class User(db.Model):
 
 class Review(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-
     mentor_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     reviewer_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-
     rating = db.Column(db.Integer, nullable=False)
     text = db.Column(db.Text, default="")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -81,39 +78,24 @@ class Review(db.Model):
 
 class ProofDocument(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     filename = db.Column(db.String(250), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    user = db.relationship(
-        "User",
-        backref=db.backref("proof_documents", lazy=True, cascade="all, delete-orphan")
-    )
 
 # ================= HELPERS =================
 def save_file(file):
     if not file or file.filename == "":
         return ""
-
     filename = secure_filename(file.filename)
     timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     filename = f"{timestamp}_{filename}"
-
-    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
     file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
-
     return filename
 
 
 def save_multiple_files(files):
-    saved_files = []
-    for file in files:
-        if file and file.filename:
-            filename = save_file(file)
-            if filename:
-                saved_files.append(filename)
-    return saved_files
+    return [save_file(f) for f in files if f and f.filename]
 
 
 def current_user():
@@ -125,49 +107,31 @@ def current_user():
 def inject_user():
     return dict(current_user=current_user(), subjects_list=SUBJECTS)
 
+
 # ================= ROUTES =================
 @app.route("/")
 def index():
-    mentors = (
-        User.query
-        .filter_by(is_mentor=True)
-        .order_by(User.rating.desc(), User.created_at.asc())
-        .limit(4)
-        .all()
-    )
+    mentors = User.query.filter_by(is_mentor=True).order_by(User.rating.desc()).limit(4).all()
     return render_template("index.html", mentors=mentors)
 
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    if current_user():
-        return redirect(url_for("profile", user_id=current_user().id))
-
     if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
-        password = request.form.get("password", "").strip()
+        email = request.form.get("email").lower().strip()
 
         if User.query.filter_by(email=email).first():
-            return render_template("register.html", error="Этот email уже зарегистрирован.")
-
-        selected_subjects = request.form.getlist("subjects")
-        grades_list = []
-
-        for subject in selected_subjects:
-            grade = request.form.get(f"grade_{subject}", "").strip()
-            if grade:
-                grades_list.append(f"{subject}: {grade}")
+            return render_template("register.html", error="Email already exists")
 
         user = User(
-            first_name=request.form.get("first_name", "").strip(),
-            last_name=request.form.get("last_name", "").strip(),
-            class_name=request.form.get("class_name", "").strip(),
+            first_name=request.form.get("first_name"),
+            last_name=request.form.get("last_name"),
+            class_name=request.form.get("class_name"),
             email=email,
-            password_hash=generate_password_hash(password),
+            password_hash=generate_password_hash(request.form.get("password")),
             photo=save_file(request.files.get("photo")),
-            subjects=", ".join(selected_subjects),
-            grades=", ".join(grades_list),
-            about=request.form.get("about", "").strip()
+            subjects=", ".join(request.form.getlist("subjects")),
+            about=request.form.get("about")
         )
 
         db.session.add(user)
@@ -181,17 +145,11 @@ def register():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    if current_user():
-        return redirect(url_for("profile", user_id=current_user().id))
-
     if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
-        password = request.form.get("password", "").strip()
+        user = User.query.filter_by(email=request.form.get("email")).first()
 
-        user = User.query.filter_by(email=email).first()
-
-        if not user or not check_password_hash(user.password_hash, password):
-            return render_template("login.html", error="Неверный email или пароль.")
+        if not user or not check_password_hash(user.password_hash, request.form.get("password")):
+            return render_template("login.html", error="Wrong credentials")
 
         session["user_id"] = user.id
         return redirect(url_for("profile", user_id=user.id))
@@ -211,5 +169,8 @@ def logout():
     session.clear()
     return redirect(url_for("index"))
 
-# ❗ ВАЖНО: НЕТ app.run() — Render сам запускает через gunicorn
+
+# ================= RUN (ONLY LOCAL) =================
+if __name__ == "__main__":
+    app.run(debug=True)
 
